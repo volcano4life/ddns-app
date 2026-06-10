@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DDNS Manager</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" />
+  <style>
+    :root { --sidebar-w: 220px; }
+    body { background: #f4f6fb; min-height: 100vh; }
+    #sidebar {
+      width: var(--sidebar-w); min-height: 100vh;
+      background: #1a1f36; color: #c8cfde;
+      position: fixed; top: 0; left: 0; z-index: 100;
+      display: flex; flex-direction: column;
+    }
+    #sidebar .brand { padding: 1.4rem 1.2rem 1rem; font-size: 1.1rem; font-weight: 700; color: #fff; letter-spacing: .02em; }
+    #sidebar .brand span { color: #7b8cde; }
+    #sidebar nav a {
+      display: flex; align-items: center; gap: .6rem;
+      padding: .6rem 1.2rem; color: #c8cfde; text-decoration: none;
+      border-left: 3px solid transparent; font-size: .9rem;
+      transition: background .15s, color .15s;
+    }
+    #sidebar nav a:hover, #sidebar nav a.active {
+      background: rgba(255,255,255,.06); color: #fff;
+      border-left-color: #7b8cde;
+    }
+    #sidebar nav a i { width: 18px; text-align: center; }
+    #main { margin-left: var(--sidebar-w); padding: 2rem; }
+    .page { display: none; }
+    .page.active { display: block; }
+    .stat-card { border-radius: 12px; border: none; box-shadow: 0 1px 6px rgba(0,0,0,.07); }
+    .badge-provider { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .dot-ok { background: #28a745; }
+    .dot-err { background: #dc3545; }
+    .dot-idle { background: #adb5bd; }
+    .log-row td { font-size: .82rem; }
+    textarea.font-mono { font-family: monospace; font-size: .82rem; }
+    .table-hover tbody tr:hover { background: rgba(123,140,222,.06); }
+  </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div id="sidebar">
+  <div class="brand">DDNS <span>Manager</span></div>
+  <nav>
+    <a href="#" class="active" data-page="dashboard"><i class="bi bi-speedometer2"></i> Dashboard</a>
+    <a href="#" data-page="records"><i class="bi bi-hdd-network"></i> DNS Records</a>
+    <a href="#" data-page="settings"><i class="bi bi-gear"></i> Settings</a>
+    <a href="#" data-page="logs"><i class="bi bi-journal-text"></i> Logs</a>
+  </nav>
+</div>
+
+<!-- Main content -->
+<div id="main">
+
+  <!-- DASHBOARD -->
+  <div id="page-dashboard" class="page active">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h4 class="mb-0 fw-bold">Dashboard</h4>
+      <button class="btn btn-primary btn-sm" onclick="triggerUpdate()">
+        <i class="bi bi-arrow-repeat me-1"></i>Update Now
+      </button>
+    </div>
+    <div class="row g-3 mb-4">
+      <div class="col-md-3">
+        <div class="card stat-card p-3">
+          <div class="text-muted small mb-1">Public IP (detected)</div>
+          <div class="fw-bold" id="stat-detected-ip">—</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card stat-card p-3">
+          <div class="text-muted small mb-1">Effective IP</div>
+          <div class="fw-bold" id="stat-effective-ip">—</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card stat-card p-3">
+          <div class="text-muted small mb-1">Next Check</div>
+          <div class="fw-bold" id="stat-next-run">—</div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card stat-card p-3">
+          <div class="text-muted small mb-1">Scheduler</div>
+          <div class="fw-bold" id="stat-scheduler">—</div>
+        </div>
+      </div>
+    </div>
+    <div class="card stat-card">
+      <div class="card-header bg-white fw-semibold">DNS Records</div>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" id="dashboard-table">
+          <thead class="table-light">
+            <tr>
+              <th></th><th>Label</th><th>Provider</th><th>Hostname</th>
+              <th>Current IP</th><th>Last Updated</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- DNS RECORDS -->
+  <div id="page-records" class="page">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h4 class="mb-0 fw-bold">DNS Records</h4>
+      <button class="btn btn-primary btn-sm" onclick="openRecordModal()">
+        <i class="bi bi-plus-lg me-1"></i>Add Record
+      </button>
+    </div>
+    <div class="card stat-card">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" id="records-table">
+          <thead class="table-light">
+            <tr>
+              <th>Label</th><th>Provider</th><th>Hostname</th>
+              <th>Current IP</th><th>Enabled</th><th>Expiry</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div id="page-settings" class="page">
+    <h4 class="mb-4 fw-bold">Settings</h4>
+    <div class="card stat-card p-4" style="max-width:640px">
+      <form id="settings-form">
+        <h6 class="fw-semibold mb-3">Update Schedule</h6>
+        <div class="mb-3 row">
+          <label class="col-sm-4 col-form-label">Check Interval (sec)</label>
+          <div class="col-sm-8"><input type="number" class="form-control" id="s-interval" min="30" /></div>
+        </div>
+        <div class="mb-3 row">
+          <label class="col-sm-4 col-form-label">Manual IP Override</label>
+          <div class="col-sm-8">
+            <input type="text" class="form-control" id="s-manual-ip" placeholder="Leave blank for auto-detect" />
+            <div class="form-text">Overrides IP auto-detection if set.</div>
+          </div>
+        </div>
+        <hr />
+        <h6 class="fw-semibold mb-3">Mailjet Alerts</h6>
+        <div class="mb-3 row">
+          <label class="col-sm-4 col-form-label">API Key</label>
+          <div class="col-sm-8"><input type="text" class="form-control font-mono" id="s-mj-key" /></div>
+        </div>
+        <div class="mb-3 row">
+          <label class="col-sm-4 col-form-label">API Secret</label>
+          <div class="col-sm-8"><input type="password" class="form-control font-mono" id="s-mj-secret" /></div>
+        </div>
+        <div class="mb-3 row">
+          <label class="col-sm-4 col-form-label">From Email</label>
+          <div class="col-sm-8"><input type="email" class="form-control" id="s-from-email" /></div>
+        </div>
+        <div class="mb-3 row">
+          <label class="col-sm-4 col-form-label">Alert To Email</label>
+          <div class="col-sm-8"><input type="email" class="form-control" id="s-to-email" /></div>
+        </div>
+        <hr />
+        <h6 class="fw-semibold mb-3">Alert Rules</h6>
+        <div class="mb-3 row">
+          <label class="col-sm-4 col-form-label">Expiry Warning (days)</label>
+          <div class="col-sm-8"><input type="number" class="form-control" id="s-expiry-days" min="1" /></div>
+        </div>
+        <div class="mb-3">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="s-alert-ip" />
+            <label class="form-check-label" for="s-alert-ip">Email on IP change</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="s-alert-fail" />
+            <label class="form-check-label" for="s-alert-fail">Email on update failure</label>
+          </div>
+        </div>
+        <div class="d-flex gap-2">
+          <button type="submit" class="btn btn-primary">Save Settings</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="testEmail()">
+            <i class="bi bi-envelope me-1"></i>Send Test Email
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- LOGS -->
+  <div id="page-logs" class="page">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h4 class="mb-0 fw-bold">Update Logs</h4>
+      <button class="btn btn-outline-secondary btn-sm" onclick="loadLogs()">
+        <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+      </button>
+    </div>
+    <div class="card stat-card">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" id="logs-table">
+          <thead class="table-light">
+            <tr><th>Time</th><th>Record</th><th>Status</th><th>Old IP</th><th>New IP</th><th>Message</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- Record Modal -->
+<div class="modal fade" id="recordModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="recordModalTitle">Add DNS Record</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="record-form">
+          <input type="hidden" id="r-id" />
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Label <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="r-label" placeholder="e.g. Home server" required />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Provider <span class="text-danger">*</span></label>
+              <select class="form-select" id="r-provider" onchange="onProviderChange()">
+                <option value="godaddy">GoDaddy</option>
+                <option value="cloudflare">Cloudflare</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">API Key Expiry (optional)</label>
+              <input type="date" class="form-control" id="r-expiry" />
+            </div>
+            <div class="col-md-6 d-flex align-items-end">
+              <div class="form-check">
+                <input type="checkbox" class="form-check-input" id="r-enabled" checked />
+                <label class="form-check-label" for="r-enabled">Enabled</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- GoDaddy fields -->
+          <div id="gd-fields" class="mt-3">
+            <hr /><h6 class="fw-semibold">GoDaddy</h6>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">API Key</label>
+                <input type="text" class="form-control font-mono" id="r-gd-key" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">API Secret</label>
+                <input type="password" class="form-control font-mono" id="r-gd-secret" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Domain</label>
+                <input type="text" class="form-control" id="r-gd-domain" placeholder="example.com" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Record Name</label>
+                <input type="text" class="form-control" id="r-gd-record" placeholder="@ or home" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Cloudflare fields -->
+          <div id="cf-fields" class="mt-3" style="display:none">
+            <hr /><h6 class="fw-semibold">Cloudflare</h6>
+            <div class="row g-3">
+              <div class="col-md-12">
+                <label class="form-label">API Token</label>
+                <input type="password" class="form-control font-mono" id="r-cf-token" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Zone ID</label>
+                <input type="text" class="form-control font-mono" id="r-cf-zone" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Record Name (FQDN)</label>
+                <input type="text" class="form-control" id="r-cf-record" placeholder="home.example.com" />
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveRecord()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999">
+  <div id="toast" class="toast align-items-center text-bg-dark border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="toast-body"></div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
+<script>
+// ─── Utilities ───────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const api = async (method, path, body) => {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const r = await fetch('/api' + path, opts);
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: r.statusText }));
+    throw new Error(err.detail || r.statusText);
+  }
+  if (r.status === 204) return null;
+  return r.json();
+};
+
+let bsToast, bsModal;
+window.addEventListener('DOMContentLoaded', () => {
+  bsToast  = new bootstrap.Toast($('toast'), { delay: 3000 });
+  bsModal  = new bootstrap.Modal($('recordModal'));
+  navigate('dashboard');
+  setInterval(refreshDashboard, 10000);
+});
+
+function toast(msg, ok = true) {
+  $('toast-body').textContent = msg;
+  $('toast').className = `toast align-items-center text-bg-${ok ? 'success' : 'danger'} border-0`;
+  bsToast.show();
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString();
+}
+
+// ─── Navigation ──────────────────────────────────────────────────────────────
+function navigate(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('#sidebar nav a').forEach(a => {
+    a.classList.toggle('active', a.dataset.page === page);
+  });
+  $('page-' + page).classList.add('active');
+  if (page === 'dashboard') refreshDashboard();
+  if (page === 'records')   loadRecords();
+  if (page === 'settings')  loadSettings();
+  if (page === 'logs')      loadLogs();
+}
+
+document.querySelectorAll('#sidebar nav a').forEach(a => {
+  a.addEventListener('click', e => { e.preventDefault(); navigate(a.dataset.page); });
+});
+
+// ─── Dashboard ───────────────────────────────────────────────────────────────
+async function refreshDashboard() {
+  try {
+    const [status, records] = await Promise.all([
+      api('GET', '/status'),
+      api('GET', '/records'),
+    ]);
+    $('stat-detected-ip').textContent  = status.detected_ip  || '—';
+    $('stat-effective-ip').textContent = status.effective_ip || '—';
+    $('stat-next-run').textContent     = status.next_run ? fmtDate(status.next_run) : '—';
+    $('stat-scheduler').innerHTML      = status.scheduler_running
+      ? '<span class="status-dot dot-ok me-1"></span>Running'
+      : '<span class="status-dot dot-err me-1"></span>Stopped';
+
+    const tbody = $('dashboard-table').querySelector('tbody');
+    tbody.innerHTML = records.map(r => `
+      <tr>
+        <td><span class="status-dot ${r.last_error ? 'dot-err' : r.current_ip ? 'dot-ok' : 'dot-idle'}"></span></td>
+        <td>${esc(r.label)}</td>
+        <td><span class="badge badge-provider bg-${r.provider === 'godaddy' ? 'success' : 'primary'}">${r.provider}</span></td>
+        <td class="font-monospace small">${esc(recordHostname(r))}</td>
+        <td class="font-monospace">${r.current_ip || '—'}</td>
+        <td>${fmtDate(r.last_updated)}</td>
+        <td>${r.last_error ? `<span class="text-danger small">${esc(r.last_error.slice(0,60))}</span>` : r.current_ip ? '<span class="text-success">OK</span>' : '<span class="text-muted">Pending</span>'}</td>
+      </tr>`).join('');
+  } catch (e) { /* silent on dashboard */ }
+}
+
+async function triggerUpdate() {
+  try {
+    await api('POST', '/update-now');
+    toast('Update triggered');
+    setTimeout(refreshDashboard, 2000);
+  } catch (e) { toast(e.message, false); }
+}
+
+// ─── Records ─────────────────────────────────────────────────────────────────
+async function loadRecords() {
+  const records = await api('GET', '/records');
+  const tbody = $('records-table').querySelector('tbody');
+  tbody.innerHTML = records.map(r => `
+    <tr>
+      <td>${esc(r.label)}</td>
+      <td><span class="badge badge-provider bg-${r.provider === 'godaddy' ? 'success' : 'primary'}">${r.provider}</span></td>
+      <td class="font-monospace small">${esc(recordHostname(r))}</td>
+      <td class="font-monospace">${r.current_ip || '—'}</td>
+      <td>${r.enabled ? '<span class="text-success">Yes</span>' : '<span class="text-muted">No</span>'}</td>
+      <td>${r.api_key_expiry ? new Date(r.api_key_expiry).toLocaleDateString() : '—'}</td>
+      <td>
+        <button class="btn btn-sm btn-outline-secondary me-1" onclick="openRecordModal(${r.id})"><i class="bi bi-pencil"></i></button>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteRecord(${r.id})"><i class="bi bi-trash"></i></button>
+      </td>
+    </tr>`).join('');
+}
+
+function recordHostname(r) {
+  if (r.provider === 'godaddy') return `${r.gd_record_name || ''}  .${r.gd_domain || ''}`;
+  return r.cf_record_name || '';
+}
+
+function onProviderChange() {
+  const p = $('r-provider').value;
+  $('gd-fields').style.display = p === 'godaddy' ? '' : 'none';
+  $('cf-fields').style.display = p === 'cloudflare' ? '' : 'none';
+}
+
+async function openRecordModal(id) {
+  $('record-form').reset();
+  $('r-id').value = '';
+  $('recordModalTitle').textContent = id ? 'Edit DNS Record' : 'Add DNS Record';
+  onProviderChange();
+  if (id) {
+    const r = await api('GET', `/records/${id}`);
+    $('r-id').value   = r.id;
+    $('r-label').value = r.label;
+    $('r-provider').value = r.provider;
+    $('r-enabled').checked = r.enabled;
+    if (r.api_key_expiry) $('r-expiry').value = r.api_key_expiry.slice(0, 10);
+    $('r-gd-key').value    = r.gd_api_key    || '';
+    $('r-gd-secret').value = r.gd_api_secret || '';
+    $('r-gd-domain').value = r.gd_domain     || '';
+    $('r-gd-record').value = r.gd_record_name|| '';
+    $('r-cf-token').value  = r.cf_api_token  || '';
+    $('r-cf-zone').value   = r.cf_zone_id    || '';
+    $('r-cf-record').value = r.cf_record_name|| '';
+    onProviderChange();
+  }
+  bsModal.show();
+}
+
+async function saveRecord() {
+  const id = $('r-id').value;
+  const provider = $('r-provider').value;
+  const payload = {
+    label:    $('r-label').value.trim(),
+    provider,
+    enabled:  $('r-enabled').checked,
+    api_key_expiry: $('r-expiry').value || null,
+    gd_api_key:    $('r-gd-key').value    || null,
+    gd_api_secret: $('r-gd-secret').value || null,
+    gd_domain:     $('r-gd-domain').value || null,
+    gd_record_name:$('r-gd-record').value || null,
+    cf_api_token:  $('r-cf-token').value  || null,
+    cf_zone_id:    $('r-cf-zone').value   || null,
+    cf_record_name:$('r-cf-record').value || null,
+  };
+  try {
+    if (id) {
+      await api('PUT', `/records/${id}`, payload);
+      toast('Record updated');
+    } else {
+      await api('POST', '/records', payload);
+      toast('Record created');
+    }
+    bsModal.hide();
+    loadRecords();
+  } catch (e) { toast(e.message, false); }
+}
+
+async function deleteRecord(id) {
+  if (!confirm('Delete this record?')) return;
+  try {
+    await api('DELETE', `/records/${id}`);
+    toast('Record deleted');
+    loadRecords();
+  } catch (e) { toast(e.message, false); }
+}
+
+// ─── Settings ────────────────────────────────────────────────────────────────
+async function loadSettings() {
+  const s = await api('GET', '/settings');
+  $('s-interval').value      = s.check_interval_seconds;
+  $('s-manual-ip').value     = s.manual_ip || '';
+  $('s-mj-key').value        = s.mj_api_key    || '';
+  $('s-mj-secret').value     = s.mj_api_secret || '';
+  $('s-from-email').value    = s.alert_from_email || '';
+  $('s-to-email').value      = s.alert_to_email   || '';
+  $('s-expiry-days').value   = s.expiry_warning_days;
+  $('s-alert-ip').checked    = s.alert_on_ip_change;
+  $('s-alert-fail').checked  = s.alert_on_update_failure;
+}
+
+$('settings-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const payload = {
+    check_interval_seconds: parseInt($('s-interval').value),
+    manual_ip:              $('s-manual-ip').value.trim() || null,
+    mj_api_key:             $('s-mj-key').value.trim()    || null,
+    mj_api_secret:          $('s-mj-secret').value.trim() || null,
+    alert_from_email:       $('s-from-email').value.trim()|| null,
+    alert_to_email:         $('s-to-email').value.trim()  || null,
+    expiry_warning_days:    parseInt($('s-expiry-days').value),
+    alert_on_ip_change:     $('s-alert-ip').checked,
+    alert_on_update_failure:$('s-alert-fail').checked,
+  };
+  try {
+    await api('PUT', '/settings', payload);
+    toast('Settings saved');
+  } catch(e) { toast(e.message, false); }
+});
+
+async function testEmail() {
+  try {
+    await api('POST', '/test-email');
+    toast('Test email sent!');
+  } catch(e) { toast(e.message, false); }
+}
+
+// ─── Logs ─────────────────────────────────────────────────────────────────────
+async function loadLogs() {
+  const logs = await api('GET', '/logs?limit=200');
+  const tbody = $('logs-table').querySelector('tbody');
+  const badge = s => {
+    const m = { updated: 'success', unchanged: 'secondary', error: 'danger' };
+    return `<span class="badge bg-${m[s] || 'secondary'}">${s}</span>`;
+  };
+  tbody.innerHTML = logs.map(l => `
+    <tr class="log-row">
+      <td>${fmtDate(l.timestamp)}</td>
+      <td>${esc(l.record_label)}</td>
+      <td>${badge(l.status)}</td>
+      <td class="font-monospace">${l.old_ip || '—'}</td>
+      <td class="font-monospace">${l.new_ip || '—'}</td>
+      <td class="text-muted">${esc(l.message || '')}</td>
+    </tr>`).join('');
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>
