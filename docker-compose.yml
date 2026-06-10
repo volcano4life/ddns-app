@@ -1,0 +1,29 @@
+services:
+  ddns:
+    build: .
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+    volumes:
+      - ddns-data:/data
+    environment:
+      # Path to the SQLite database file inside the container.
+      # The /data directory is persisted via the named volume below.
+      # Override with: DATABASE_URL=sqlite:////data/custom.db
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////data/ddns.db}
+
+      # Interface the uvicorn server binds to. 0.0.0.0 = all interfaces.
+      - HOST=${HOST:-0.0.0.0}
+
+      # Port uvicorn listens on (must match the ports mapping above).
+      - PORT=${PORT:-8080}
+
+      # ── Optional: Mailjet email alerts ───────────────────────────────
+      # - MJ_API_KEY=your_mailjet_api_key
+      # - MJ_API_SECRET=your_mailjet_api_secret
+      # - ALERT_FROM_EMAIL=alerts@yourdomain.com
+      # - ALERT_TO_EMAIL=you@yourdomain.com
+
+    restart: unless-stopped
+
+volumes:
+  ddns-data:
